@@ -3,10 +3,12 @@
 pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Safe} from "@safe-global/safe-smart-account/contracts/Safe.sol";
 import {SafeProxyFactory} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxyFactory.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {WalletRegistry} from "../../src/backdoor/WalletRegistry.sol";
+import {BackdoorExploit} from "../../src/backdoor/BackdoorExploit.sol";
 
 contract BackdoorChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -70,7 +72,14 @@ contract BackdoorChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_backdoor() public checkSolvedByPlayer {
-        
+        new BackdoorExploit(
+            address(singletonCopy),
+            walletFactory,
+            walletRegistry,
+            IERC20(address(token)),
+            users,
+            recovery
+        );
     }
 
     /**
