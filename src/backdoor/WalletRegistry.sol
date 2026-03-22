@@ -106,6 +106,15 @@ contract WalletRegistry is IProxyCreationCallback, Ownable {
             revert OwnerIsNotABeneficiary();
         }
 
+        // address internal constant SENTINEL_MODULES = address(0x1);
+        // error ModulesNotEmpty();
+
+        // // 在 proxyCreated 里加：
+        // (address[] memory modules, ) = Safe(walletAddress).getModulesPaginated(SENTINEL_MODULES, 1);
+        // if (modules.length != 0) {
+        //     revert ModulesNotEmpty();
+        // }
+
         address fallbackManager = _getFallbackManager(walletAddress);
         if (fallbackManager != address(0)) {
             revert InvalidFallbackManager(fallbackManager);
