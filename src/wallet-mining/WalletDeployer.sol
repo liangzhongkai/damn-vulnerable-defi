@@ -19,7 +19,7 @@ contract WalletDeployer {
     address public immutable chief;
     address public immutable gem;
 
-    address public mom;
+    address public mom;  // slot 0
     address public hat;
 
     error Boom();
@@ -50,6 +50,11 @@ contract WalletDeployer {
             return false;
         }
 
+        // cook is safe proxy factory
+        // cpy is safe singleton
+        // wat is initializer(safe.setup)
+        // num is salt nonce
+        // aim is the address of the safe account (proxy address is USER_DEPOSIT_ADDRESS)
         if (address(cook.createProxyWithNonce(cpy, wat, num)) != aim) {
             return false;
         }
@@ -62,11 +67,11 @@ contract WalletDeployer {
 
     function can(address u, address a) public view returns (bool y) {
         assembly {
-            let m := sload(0)
+            let m := sload(0) // mom
             if iszero(extcodesize(m)) { stop() }
             let p := mload(0x40)
             mstore(0x40, add(p, 0x44))
-            mstore(p, shl(0xe0, 0x4538c4eb))
+            mstore(p, shl(0xe0, 0x4538c4eb)) // cast sig "can(address,address)"
             mstore(add(p, 0x04), u)
             mstore(add(p, 0x24), a)
             if iszero(staticcall(gas(), m, p, 0x44, p, 0x20)) { stop() }
