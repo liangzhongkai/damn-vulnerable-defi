@@ -135,6 +135,9 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
         paymentToken.transferFrom(
             msg.sender, address(this), want.mulDivDown(_toDVT(offer.price, _currentRate), offer.totalShards)
         );
+        // pay=want × price × rate / 10^6 / totalShards
+        // price = 1e12, rate = 75e15, totalShards = 1e25
+        // pay = want * 75 / 10^4            want * 75 < 10^4，即 want ≤ 133 时 完全不用付钱！
         if (offer.stock == 0) _closeOffer(offerId);
     }
 
@@ -160,6 +163,11 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
         emit Cancelled(offerId, purchaseIndex);
 
+        // fill得知： pay / shard = 75 / 1e4 = 0.0075   单位shard，需要付 0.0075 个 DVT
+        // refund = shards × rate / 10e6 (向上取整)
+        // rate = 75e15
+        // refund = shards × 75 × 10e9 
+        // refund / shard = 75 × 10e9 / 1e6 = 75 × 10e3 = 75000  单位shard，需要退 75000 个 DVT
         paymentToken.transfer(buyer, purchase.shards.mulDivUp(purchase.rate, 1e6));
     }
 

