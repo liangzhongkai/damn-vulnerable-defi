@@ -95,11 +95,18 @@ contract CurvyPuppetLending is ReentrancyGuard {
     }
 
     function liquidate(address target) external nonReentrant {
-        uint256 borrowAmount = positions[target].borrowAmount;
-        uint256 collateralAmount = positions[target].collateralAmount;
+        uint256 borrowAmount = positions[target].borrowAmount; // 1e18
+        uint256 collateralAmount = positions[target].collateralAmount; // 2500e18
 
+        // 2500e18 * 10e18 * 100
         uint256 collateralValue = getCollateralValue(collateralAmount) * 100;
+        // 1e18 * (4000 × virtual_price) / 1e18 * 175
         uint256 borrowValue = getBorrowValue(borrowAmount) * 175;
+        // collateralValue * 100 < borrowValue * 175
+        // 25,000 × 100 < (4000 × virtual_price) × 175
+        // 2,500,000 < 700,000 × virtual_price
+        // virtual_price > 2,500,000 / 700,000
+        // virtual_price > 3.571
         if (collateralValue >= borrowValue) revert HealthyPosition(borrowValue, collateralValue);
 
         delete positions[target];
@@ -115,6 +122,7 @@ contract CurvyPuppetLending is ReentrancyGuard {
 
     function getCollateralValue(uint256 amount) public view returns (uint256) {
         if (amount == 0) return 0;
+        // oracle.getPrice(collateralAsset).value 也即dvt price
         return amount.mulWadDown(oracle.getPrice(collateralAsset).value);
     }
 
@@ -130,7 +138,54 @@ contract CurvyPuppetLending is ReentrancyGuard {
         permit2.transferFrom({from: msg.sender, to: address(this), amount: SafeCast.toUint160(amount), token: asset});
     }
 
+    // @view
+    // @external
+    // def get_virtual_price() -> uint256:
+    //     """
+    //     @notice The current virtual price of the pool LP token
+    //     @dev Useful for calculating profits
+    //     @return LP token virtual price normalized to 1e18
+    //     """
+    //     D: uint256 = self.get_D(self._balances(), self._A())   # D 约等于 balance0 + balance1
+    //     token_supply: uint256 = ERC20(self.lp_token).totalSupply()  
+    //     return D * PRECISION / token_supply                    # (3.454e22 + 3.554e22) / 6.39e22 = 1.096e18
+
+    // // 1096890440129560193 [1.096e18]
+    // cast call 0xDC24316b9AE028F1497c275EB9192a3Ea0f67022 "get_virtual_price()(uint256)" \  // curve.get_virtual_price()
+    // --rpc-url $MAINNET_FORKING_URL --block 20190356
+
+    // // 34543279685479012272346 [3.454e22]
+    // cast call 0xDC24316b9AE028F1497c275EB9192a3Ea0f67022 "balances(uint256)(uint256)" 0 \  // curve.balances(0) 即eth
+    // --rpc-url $MAINNET_FORKING_URL --block 20190356
+
+    // // 35548870433002420435140 [3.554e22]
+    // cast call 0xDC24316b9AE028F1497c275EB9192a3Ea0f67022 "balances(uint256)(uint256)" 1 \  // curve.balances(1) 即stETH
+    // --rpc-url $MAINNET_FORKING_URL --block 20190356
+
+    // // 63900743099782364043112 [6.39e22]
+    // cast call 0x06325440D014e39736583c165C2963BA99fAf14E "totalSupply()(uint256)" \    // lp.totalSupply()
+    // --rpc-url $MAINNET_FORKING_URL --block 20190356
+
+    // 要令 (X + 3.554e22) / 6.39e22 > 3.571e18
+    // X > 1.926e23
+    // X本身有3.454e22, 所以需要增加X > 1.926e23 - 3.454e22 = 1.572e23
+
+    // 结论：
+    //      aave v2 flash loan 1.16e23 weth
+    //      aave v3 flash loan 8.319e22 weth
+    //      需要增加X > 1.572e23 weth
+    // export WETH=0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2
+    // export AWETH_V2=0x030bA81f1c18d280636F32af80b9AAd02Cf0854e
+    // export AWETH_V3=0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8
+    // export RPC=$MAINNET_FORKING_URL
+    // export BLK=20190356
+    // cast call $WETH "balanceOf(address)(uint256)" $AWETH_V2 --rpc-url $RPC --block $BLK
+    // 116076463816355134246288 [1.16e23]
+    // cast call $WETH "balanceOf(address)(uint256)" $AWETH_V3 --rpc-url $RPC --block $BLK
+    // 83191993826816279957695 [8.319e22]
+
     function _getLPTokenPrice() private view returns (uint256) {
+        // ETHER_PRICE = 4000e18
         return oracle.getPrice(curvePool.coins(0)).value.mulWadDown(curvePool.get_virtual_price());
     }
 }
