@@ -163,7 +163,7 @@ contract CurvyPuppetLending is ReentrancyGuard {
     // --rpc-url $MAINNET_FORKING_URL --block 20190356
 
     // // 63900743099782364043112 [6.39e22]
-    // cast call 0x06325440D014e39736583c165C2963BA99fAf14E "totalSupply()(uint256)" \    // lp.totalSupply()
+    // cast call 0x06325440D014e39736583c165C2963BA99fAf14E "totalSupply()(uint256)" \    // lp-token.totalSupply() 即dvt
     // --rpc-url $MAINNET_FORKING_URL --block 20190356
 
     // 要令 (X + 3.554e22) / 6.39e22 > 3.571e18
