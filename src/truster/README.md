@@ -7,12 +7,12 @@ The pool holds 1 million DVT tokens. You have nothing.
 To pass this challenge, rescue all funds in the pool executing a single transaction. Deposit the funds into the designated recovery account.
 
 
-Truster 挑战 - 合约设计意图                                                                                                                                     
-                                                                                                                                                                  
-  TrusterLenderPool（借贷池）                                                                                                                                     
-                                                                                                                                                                  
-  这是一个闪电贷池，设计目的是：                                                                                                                                  
-                                                                                                                                                                  
+Truster 挑战 - 合约设计意图
+
+  TrusterLenderPool（借贷池）
+
+  这是一个闪电贷池，设计目的是：
+
   1. 提供闪电贷服务：让用户可以无抵押借出 token，在同一交易中还款
   2. 支持回调机制：通过 target.functionCall(data) 让借款人可以在借款后执行自定义逻辑
 
